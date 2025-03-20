@@ -251,17 +251,44 @@
           const statusElement = item.querySelector('.status');
           const status = statusElement ? '已提交' : '未提交';
 
-          // 获取题目内容
-          const questionElement = item.querySelector('.item-body h4 .custom_ueditor_cn_body');
-          const questionText = questionElement ? questionElement.textContent.trim() : '';
+          // 获取题目内容 - 修改此部分以适应新的HTML结构
+          let questionText = '';
+          const questionElement = item.querySelector('.item-body h4');
+          if (questionElement) {
+              // 优先查找 .custom_ueditor_cn_body，如果没有，则直接获取 h4 中的 p 标签内容
+              const customBody = questionElement.querySelector('.custom_ueditor_cn_body');
+              if (customBody) {
+                  questionText = customBody.textContent.trim();
+              } else {
+                  const pElement = questionElement.querySelector('p');
+                  if (pElement) {
+                      questionText = pElement.textContent.trim();
+                  } else {
+                      // 如果上述都失败，直接获取 h4 的文本内容
+                      questionText = questionElement.textContent.trim();
+                  }
+              }
+          }
 
-          // 获取选项
-          const optionElements = item.querySelectorAll('.list-unstyled-radio li');
+          // 获取选项 - 适配多种可能的HTML结构
           const options = [];
-
-          optionElements.forEach(optionElement => {
+          
+          // 处理单选题选项
+          const radioOptionElements = item.querySelectorAll('.list-unstyled-radio li');
+          radioOptionElements.forEach(optionElement => {
               const keyElement = optionElement.querySelector('.radioInput');
-              const valueElement = optionElement.querySelector('.radioText .custom_ueditor_cn_body');
+              let valueElement = optionElement.querySelector('.radioText .custom_ueditor_cn_body');
+              
+              // 如果没有找到 .custom_ueditor_cn_body，尝试直接从 .radioText 中获取 p 标签
+              if (!valueElement) {
+                  const radioText = optionElement.querySelector('.radioText');
+                  if (radioText) {
+                      const pElement = radioText.querySelector('p');
+                      if (pElement) {
+                          valueElement = pElement;
+                      }
+                  }
+              }
 
               if (keyElement && valueElement) {
                   const key = keyElement.textContent.trim();
@@ -269,16 +296,61 @@
                   options.push({ key, value });
               }
           });
+          
+          // 处理多选题选项
+          const checkboxOptionElements = item.querySelectorAll('.list-unstyled-checkbox li');
+          checkboxOptionElements.forEach(optionElement => {
+              const keyElement = optionElement.querySelector('.checkboxInput');
+              let valueElement = optionElement.querySelector('.checkboxText .custom_ueditor_cn_body');
+              
+              // 如果没有找到 .custom_ueditor_cn_body，尝试直接从 .checkboxText 中获取 p 标签
+              if (!valueElement) {
+                  const checkboxText = optionElement.querySelector('.checkboxText');
+                  if (checkboxText) {
+                      const pElement = checkboxText.querySelector('p');
+                      if (pElement) {
+                          valueElement = pElement;
+                      }
+                  }
+              }
+
+              if (keyElement && valueElement) {
+                  const key = keyElement.textContent.trim();
+                  const value = valueElement.textContent.trim();
+                  options.push({ key, value });
+              }
+          });
+          
+          // 判断题处理
+          const judgementOptions = item.querySelectorAll('.list-inline.list-unstyled-radio li');
+          if (judgementOptions.length === 2 && options.length === 0) {
+              // 假设第一个是"是"，第二个是"否"
+              options.push({ key: '✓', value: '正确' });
+              options.push({ key: '✗', value: '错误' });
+          }
 
           // 获取选中的选项
-          const selectedElement = item.querySelector('.el-radio.is-checked');
           let selected = null;
-
-          if (selectedElement) {
-              const selectedKeyElement = selectedElement.querySelector('.radioInput');
+          
+          // 单选题选中项
+          const selectedRadioElement = item.querySelector('.el-radio.is-checked');
+          if (selectedRadioElement) {
+              const selectedKeyElement = selectedRadioElement.querySelector('.radioInput');
               if (selectedKeyElement) {
                   selected = selectedKeyElement.textContent.trim();
               }
+          }
+          
+          // 多选题选中项
+          const selectedCheckboxElements = item.querySelectorAll('.el-checkbox.is-checked');
+          if (selectedCheckboxElements.length > 0) {
+              selected = [];
+              selectedCheckboxElements.forEach(element => {
+                  const keyElement = element.querySelector('.checkboxInput');
+                  if (keyElement) {
+                      selected.push(keyElement.textContent.trim());
+                  }
+              });
           }
 
           questions.push({
