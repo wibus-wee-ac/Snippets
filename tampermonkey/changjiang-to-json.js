@@ -279,15 +279,9 @@
               const keyElement = optionElement.querySelector('.radioInput');
               let valueElement = optionElement.querySelector('.radioText .custom_ueditor_cn_body');
               
-              // 如果没有找到 .custom_ueditor_cn_body，尝试直接从 .radioText 中获取 p 标签
+              // 如果没有找到 .custom_ueditor_cn_body，尝试直接从 .radioText 中获取文本
               if (!valueElement) {
-                  const radioText = optionElement.querySelector('.radioText');
-                  if (radioText) {
-                      const pElement = radioText.querySelector('p');
-                      if (pElement) {
-                          valueElement = pElement;
-                      }
-                  }
+                  valueElement = optionElement.querySelector('.radioText');
               }
 
               if (keyElement && valueElement) {
@@ -303,17 +297,11 @@
               const keyElement = optionElement.querySelector('.checkboxInput');
               let valueElement = optionElement.querySelector('.checkboxText .custom_ueditor_cn_body');
               
-              // 如果没有找到 .custom_ueditor_cn_body，尝试直接从 .checkboxText 中获取 p 标签
+              // 如果没有找到 .custom_ueditor_cn_body，尝试直接从 .checkboxText 中获取文本
               if (!valueElement) {
-                  const checkboxText = optionElement.querySelector('.checkboxText');
-                  if (checkboxText) {
-                      const pElement = checkboxText.querySelector('p');
-                      if (pElement) {
-                          valueElement = pElement;
-                      }
-                  }
+                  valueElement = optionElement.querySelector('.checkboxText');
               }
-
+              
               if (keyElement && valueElement) {
                   const key = keyElement.textContent.trim();
                   const value = valueElement.textContent.trim();
