@@ -258,7 +258,12 @@
               // 优先查找 .custom_ueditor_cn_body，如果没有，则直接获取 h4 中的 p 标签内容
               const customBody = questionElement.querySelector('.custom_ueditor_cn_body');
               if (customBody) {
-                  questionText = customBody.textContent.trim();
+                  const pElement = customBody.querySelector('p');
+                  if (pElement) {
+                      questionText = pElement.textContent.trim();
+                  } else {
+                      questionText = customBody.textContent.trim();
+                  }
               } else {
                   const pElement = questionElement.querySelector('p');
                   if (pElement) {
@@ -286,7 +291,16 @@
 
               if (keyElement && valueElement) {
                   const key = keyElement.textContent.trim();
-                  const value = valueElement.textContent.trim();
+                  let value = '';
+                  
+                  // 尝试从 custom_ueditor_cn_body 中的 p 标签获取文本
+                  const pElement = valueElement.querySelector('p');
+                  if (pElement) {
+                      value = pElement.textContent.trim();
+                  } else {
+                      value = valueElement.textContent.trim();
+                  }
+                  
                   options.push({ key, value });
               }
           });
