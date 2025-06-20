@@ -236,8 +236,13 @@
       }
 
       const questions = [];
+      const processedIds = new Set(); // 用于去重
+
+      console.log(`找到 ${subjectItems.length} 个 .subject-item 元素`);
 
       subjectItems.forEach((item, index) => {
+          console.log(`处理第 ${index + 1} 个题目元素`);
+
           // 获取题目类型和分数
           const typeElement = item.querySelector('.item-type');
           const typeText = typeElement ? typeElement.textContent.trim() : '';
@@ -246,6 +251,8 @@
           const id = typeMatch ? parseInt(typeMatch[1]) : index + 1;
           const type = typeMatch ? typeMatch[2] : '';
           const score = typeMatch ? parseInt(typeMatch[3]) : 0;
+
+          console.log(`题目 ${id}: 类型=${type}, 分数=${score}, 原始文本="${typeText}"`);
 
           // 获取题目状态
           const statusElement = item.querySelector('.status');
@@ -274,6 +281,8 @@
                   }
               }
           }
+
+          console.log(`题目 ${id} 内容: "${questionText.substring(0, 50)}${questionText.length > 50 ? '...' : ''}"`);
 
           // 获取选项 - 适配多种可能的HTML结构
           const options = [];
@@ -355,16 +364,36 @@
               });
           }
 
-          questions.push({
-              id,
-              type,
-              score,
-              status,
-              question: questionText,
-              options,
-              selected
-          });
+          // 验证题目有效性并去重
+          const isValidQuestion = questionText.trim() !== '' && type !== '' && score > 0;
+          const isDuplicate = processedIds.has(id);
+
+          console.log(`题目 ${id} 验证: 有效=${isValidQuestion}, 重复=${isDuplicate}`);
+
+          if (isValidQuestion && !isDuplicate) {
+              processedIds.add(id);
+              questions.push({
+                  id,
+                  type,
+                  score,
+                  status,
+                  question: questionText,
+                  options,
+                  selected
+              });
+              console.log(`✓ 题目 ${id} 已添加到结果中`);
+          } else {
+              console.log(`✗ 题目 ${id} 被跳过: ${!isValidQuestion ? '无效内容' : ''}${isDuplicate ? '重复ID' : ''}`);
+          }
       });
+
+      // 输出处理统计信息
+      console.log(`处理完成: 总共找到 ${subjectItems.length} 个元素，有效题目 ${questions.length} 个`);
+
+      if (questions.length === 0) {
+          showToast('未找到有效的试题内容！请检查页面是否正确加载。');
+          return;
+      }
 
       // 转换为JSON并复制到剪贴板
       const jsonString = JSON.stringify(questions, null, 2);
