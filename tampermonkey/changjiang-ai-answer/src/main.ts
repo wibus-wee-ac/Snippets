@@ -5,11 +5,12 @@ import { QuestionCaptureRunner } from './runner/capture-questions';
 import ActionPanel from './ui/action-panel';
 import CaptureStore from './state/capture-store';
 import CaptureGallery from './ui/capture-gallery';
+import JsonExtractorPanel from './ui/json-extractor';
+import getFeatureConfig, { isEnabled } from './config/feature-flags';
 import AnswersStore, { normalizeAnswers } from './state/answers-store';
 import Notepad from './ui/notepad';
 import { GM_info } from '$';
 import { clickSubmit } from './helper/submit.helper';
-import getFeatureConfig, { isEnabled } from './config/feature-flags';
 
 // Build capture runner and expose simple console API
 const cfg = getFeatureConfig();
@@ -70,6 +71,13 @@ if (isEnabled('capture')) {
 const notepadPane = panel.addTab({ id: 'notepad', label: 'Notepad' });
 const notepad = new Notepad(answers);
 notepadPane.appendChild(notepad.el);
+
+// Extract tab (Question JSON)
+if (isEnabled('questionExport')) {
+  const extractPane = panel.addTab({ id: 'extract', label: 'Extract' });
+  const extractor = new JsonExtractorPanel();
+  extractPane.appendChild(extractor.el);
+}
 
 // Track current question order and sync to Notepad preview list
 if (isEnabled('orderNav')) {
