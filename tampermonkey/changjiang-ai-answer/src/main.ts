@@ -1,3 +1,4 @@
+import './style.css';
 import logger from './logger';
 import orderNav from './helper/order-nav.helper';
 import { waitForQuestionElement } from './helper/find-question.helper';
@@ -11,6 +12,7 @@ import AnswersStore, { normalizeAnswers } from './state/answers-store';
 import Notepad from './ui/notepad';
 import { GM_info } from '$';
 import { clickSubmit } from './helper/submit.helper';
+import FeatureFlagsWidget from './ui/feature-flags';
 
 // Build capture runner and expose simple console API
 const cfg = getFeatureConfig();
@@ -42,14 +44,20 @@ logger.banner('Injected', 'CJ-AI ready');
 logger.info('Use in console:', 'CJAI.start()', 'CJAI.stop()', 'CJAI.one(n)');
 
 // Create Action Panel (Vercel-like) for quick actions
-const panel = new ActionPanel({ id: 'cjai-panel', title: 'CJ Capture - 自动截取题目截图', dock: 'bottom-right' });
-panel.setDoc(
-  `Author: wibus\n` +
-  `Version: ${GM_info.script.version}\n` +
-  `Namespace: ${GM_info.script.namespace}\n\n` +
-  `快速截取题目用于 AI 辅助答题，长江雨课堂在字体文件上做了防爬虫处理，普通复制黏贴无法获得正确的文字渲染。` +
-  `同时，该插件提供了 Notepad Tab，可以让你在答题时直接编写和保存文本答案。\n\n`
-);
+const panel = new ActionPanel({ id: 'cjai-panel', title: 'CJ Capture', dock: 'bottom-right' });
+// Compose About + Feature Flags into info content
+{
+  const infoWrap = document.createElement('div');
+  const doc = document.createElement('div');
+  doc.className = 'cjai-section';
+  const docTitle = document.createElement('div'); docTitle.className = 'cjai-section__title'; docTitle.textContent = 'About';
+  const docBody = document.createElement('div'); docBody.className = 'cjai-doc';
+  docBody.textContent = `Author: wibus\nVersion: ${GM_info.script.version}\nNamespace: ${GM_info.script.namespace}\n\n快速截取题目用于 AI 辅助答题，长江雨课堂在字体文件上做了防爬虫处理，普通复制黏贴无法获得正确的文字渲染。同时，该插件提供了 Notepad/Extract 等工具。`;
+  doc.append(docTitle, docBody);
+  const flags = new FeatureFlagsWidget();
+  infoWrap.append(doc, flags.el);
+  panel.setDoc(infoWrap);
+}
 
 panel.clearActions();
 if (isEnabled('capture')) {
