@@ -1,7 +1,5 @@
 import logger from '../logger';
-
-const EXACT_SUBMIT_SELECTOR =
-  '#app > div.viewContainer > div > div > div.container > div > div > div.container-problem > div.problem-fixedbar > div > div:nth-child(2) > div > ul > li > span > button';
+import { getFeatureConfig } from '../config/feature-flags';
 
 function hasText(el: Element, text: string): boolean {
   const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
@@ -10,7 +8,9 @@ function hasText(el: Element, text: string): boolean {
 
 export function findSubmitButton(): HTMLButtonElement | null {
   // 1) Try exact selector
-  const exact = document.querySelector<HTMLButtonElement>(EXACT_SUBMIT_SELECTOR);
+  const cfg = getFeatureConfig();
+  const exactSelector = cfg.selectors?.submitButton;
+  const exact = exactSelector ? document.querySelector<HTMLButtonElement>(exactSelector) : null;
   if (exact) return exact;
 
   // 2) Fallback: within problem-fixedbar, a primary button with text including 提交
@@ -48,4 +48,3 @@ export function clickSubmit(): boolean {
 }
 
 export default clickSubmit;
-

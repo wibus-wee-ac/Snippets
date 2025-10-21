@@ -9,7 +9,10 @@ export default defineConfig({
       userscript: {
         icon: 'https://vitejs.dev/logo.svg',
         namespace: 'wibus/changjiang-ai-answer',
-        match: ['https://changjiang.yuketang.cn/*'],
+        match: [
+          'https://changjiang.yuketang.cn/*',
+          'https://changjiang-exam.yuketang.cn/*',
+        ],
       },
     }),
   ],

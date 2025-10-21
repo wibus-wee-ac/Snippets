@@ -9,8 +9,10 @@ import AnswersStore, { normalizeAnswers } from './state/answers-store';
 import Notepad from './ui/notepad';
 import { GM_info } from '$';
 import { clickSubmit } from './helper/submit.helper';
+import getFeatureConfig, { isEnabled } from './config/feature-flags';
 
 // Build capture runner and expose simple console API
+const cfg = getFeatureConfig();
 const store = new CaptureStore();
 const answers = new AnswersStore();
 const runner = new QuestionCaptureRunner({
@@ -29,6 +31,7 @@ const CJAI = {
   store,
   answers,
   importAnswers: (doc: unknown) => { const arr = normalizeAnswers(doc as any); answers.setAll(arr); return arr.length; },
+  features: cfg,
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,49 +51,66 @@ panel.setDoc(
 );
 
 panel.clearActions();
-panel.addAction({ id: 'start', label: 'Start', kind: 'primary', tooltip: 'Capture all from current', hotkey: 'S', onClick: () => CJAI.start() });
-panel.addAction({ id: 'stop', label: 'Stop', kind: 'danger', tooltip: 'Stop capture', hotkey: 'X', onClick: () => CJAI.stop() });
-panel.addAction({ id: 'prev', label: 'Prev', tooltip: 'Go to previous', hotkey: 'A', onClick: () => { orderNav.prev(); } });
-panel.addAction({ id: 'next', label: 'Next', tooltip: 'Go to next', hotkey: 'D', onClick: () => { orderNav.next(); } });
+if (isEnabled('capture')) {
+  panel.addAction({ id: 'start', label: 'Start', kind: 'primary', tooltip: 'Capture all from current', hotkey: 'S', onClick: () => CJAI.start() });
+  panel.addAction({ id: 'stop', label: 'Stop', kind: 'danger', tooltip: 'Stop capture', hotkey: 'X', onClick: () => CJAI.stop() });
+}
+if (isEnabled('orderNav')) {
+  panel.addAction({ id: 'prev', label: 'Prev', tooltip: 'Go to previous', hotkey: 'A', onClick: () => { orderNav.prev(); } });
+  panel.addAction({ id: 'next', label: 'Next', tooltip: 'Go to next', hotkey: 'D', onClick: () => { orderNav.next(); } });
+}
 
 // Preview tab
-const previewPane = panel.addTab({ id: 'preview', label: 'Preview' });
-const gallery = new CaptureGallery(store);
-previewPane.appendChild(gallery.el);
+if (isEnabled('capture')) {
+  const previewPane = panel.addTab({ id: 'preview', label: 'Preview' });
+  const gallery = new CaptureGallery(store);
+  previewPane.appendChild(gallery.el);
+}
 // Notepad tab
 const notepadPane = panel.addTab({ id: 'notepad', label: 'Notepad' });
 const notepad = new Notepad(answers);
 notepadPane.appendChild(notepad.el);
 
 // Track current question order and sync to Notepad preview list
-let lastOrder: number | null = null;
-setInterval(() => {
-  try {
-    const cur = orderNav.current();
-    if (cur && cur !== lastOrder) {
-      lastOrder = cur;
-      notepad.setCurrentOrder(cur);
-    }
-  } catch {}
-}, 600);
+if (isEnabled('orderNav')) {
+  let lastOrder: number | null = null;
+  setInterval(() => {
+    try {
+      const cur = orderNav.current();
+      if (cur && cur !== lastOrder) {
+        lastOrder = cur;
+        notepad.setCurrentOrder(cur);
+      }
+    } catch {}
+  }, 600);
+}
 
 // Listen for retry events from gallery
-window.addEventListener('cjai:retry', (ev: any) => {
-  const order = Number(ev?.detail?.order);
-  if (!order) return;
-  runner.captureOne(order);
-});
+if (isEnabled('capture')) {
+  window.addEventListener('cjai:retry', (ev: any) => {
+    const order = Number(ev?.detail?.order);
+    if (!order) return;
+    runner.captureOne(order);
+  });
+}
 
 // Global hotkey: Cmd+G to submit (Mac). On Windows/Linux, Ctrl+G also works.
-window.addEventListener('keydown', (ev) => {
-  const isMeta = ev.metaKey; // macOS Command
-  const isCtrl = ev.ctrlKey; // other platforms
-  if ((isMeta || isCtrl) && !ev.shiftKey && !ev.altKey) {
-    const key = ev.key?.toLowerCase();
-    if (key === 'e') {
-      logger.info('Hotkey detected: Submit answers');
-      ev.preventDefault();
-      clickSubmit();
+if (isEnabled('submitHotkey')) {
+  window.addEventListener('keydown', (ev) => {
+    const isMeta = ev.metaKey; // macOS Command
+    const isCtrl = ev.ctrlKey; // other platforms
+    if ((isMeta || isCtrl) && !ev.shiftKey && !ev.altKey) {
+      const key = ev.key?.toLowerCase();
+      if (key === 'g') {
+        // Avoid capturing in editable fields
+        const target = ev.target as HTMLElement | null;
+        const tag = (target?.tagName || '').toLowerCase();
+        const editable = target && (tag === 'input' || tag === 'textarea' || (target as any).isContentEditable);
+        if (!editable) {
+          ev.preventDefault();
+          clickSubmit();
+        }
+      }
     }
-  }
-});
+  });
+}

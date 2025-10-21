@@ -11,6 +11,7 @@ import logger from '../logger';
 export function findQuestionElementHelper(): HTMLElement | null {
   // 明确的最后兜底：页面当前结构下的精确路径（主内容区，不是左侧题号侧栏）
   const EXACT_FALLBACK_SELECTOR =
+    getFeatureConfig().selectors?.questionContainerExact ||
     '#app > div.viewContainer > div > div > div.container > div > div > div.container-problem > div.el-scrollbar > div.el-scrollbar__wrap.el-scrollbar__wrap--hidden-default > div > div';
   // 文本匹配：题目分值，如：(1分)、(2.5分)
   const SCORE_RE = /\(\s*\d+(?:\.\d+)?\s*分\s*\)/;
@@ -169,3 +170,4 @@ export async function waitForQuestionElement(
     }
   });
 }
+import { getFeatureConfig } from '../config/feature-flags';
