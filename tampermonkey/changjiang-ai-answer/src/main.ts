@@ -8,6 +8,7 @@ import CaptureGallery from './ui/capture-gallery';
 import AnswersStore, { normalizeAnswers } from './state/answers-store';
 import Notepad from './ui/notepad';
 import { GM_info } from '$';
+import { clickSubmit } from './helper/submit.helper';
 
 // Build capture runner and expose simple console API
 const store = new CaptureStore();
@@ -78,4 +79,18 @@ window.addEventListener('cjai:retry', (ev: any) => {
   const order = Number(ev?.detail?.order);
   if (!order) return;
   runner.captureOne(order);
+});
+
+// Global hotkey: Cmd+G to submit (Mac). On Windows/Linux, Ctrl+G also works.
+window.addEventListener('keydown', (ev) => {
+  const isMeta = ev.metaKey; // macOS Command
+  const isCtrl = ev.ctrlKey; // other platforms
+  if ((isMeta || isCtrl) && !ev.shiftKey && !ev.altKey) {
+    const key = ev.key?.toLowerCase();
+    if (key === 'e') {
+      logger.info('Hotkey detected: Submit answers');
+      ev.preventDefault();
+      clickSubmit();
+    }
+  }
 });

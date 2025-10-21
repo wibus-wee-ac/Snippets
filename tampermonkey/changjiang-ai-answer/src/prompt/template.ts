@@ -72,7 +72,7 @@ export function buildAnswerPrompt(options: PromptOptions = {}): string {
     }
   ]
 }`,
-    includeExample ? `${exampleHeader} (DO NOT COPY LITERALLY):\n${exampleStr}` : '',
+    includeExample ? `${exampleHeader} (DO NOT COPY LITERALLY):\n\`\`\`\n${exampleStr}\n\`\`\`` : '',
     `${endHeader}.`,
   ]
     .filter(Boolean)
