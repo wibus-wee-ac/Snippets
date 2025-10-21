@@ -2172,11 +2172,20 @@ parse() {
     docTitle.textContent = "About";
     const docBody = document.createElement("div");
     docBody.className = "cjai-doc";
-    docBody.textContent = `Author: wibus
-Version: ${_GM_info.script.version}
-Namespace: ${_GM_info.script.namespace}
+    docBody.textContent = `CJ Capture — 简易用法
+作者: wibus
+版本: ${_GM_info.script.version}
+命名空间: ${_GM_info.script.namespace}
+• 面板位于右下角，可拖拽、缩放、折叠。
+• Tabs 说明：
+  - Preview（截图预览，测试页面专属）：点击 Start 从“当前题”至“最后一题”依次截图；可在列表中勾选后 Download Zip / Save to Folder / Download Files；Retry 可重拍某题。
+  - Extract（题目提取，考试页面专属）：Scan Page 获取题目 JSON；Copy Prompt 生成给 AI 的提示词（内含题目 JSON）；Download 保存 JSON 文件。
+  - Notepad（答案簿）：将返回的 AnswerDoc JSON 粘贴→Parse JSON；列表按题号展示，跟随左侧导航自动滚动；输入区可 Hide/Show；Copy Prompt 可复制标准提示词模板。
+• 快捷键：Cmd/Ctrl + G 触发页面提交按钮（如适配）。
+• Feature Flags：Info 面板下方可切换功能开关；Apply 后 Reload 生效。一般来说，并不需要修改这些设置，功能会随着作用域自动更新。
 
-快速截取题目用于 AI 辅助答题，长江雨课堂在字体文件上做了防爬虫处理，普通复制黏贴无法获得正确的文字渲染。同时，该插件提供了 Notepad/Extract 等工具。`;
+• 未来：自动查看课程视频能力、更多题型支持
+`;
     doc.append(docTitle, docBody);
     const flags = new FeatureFlagsWidget();
     infoWrap.append(doc, flags.el);
