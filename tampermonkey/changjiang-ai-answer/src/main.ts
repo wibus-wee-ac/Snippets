@@ -13,6 +13,7 @@ import Notepad from './ui/notepad';
 import { GM_info } from '$';
 import { clickSubmit } from './helper/submit.helper';
 import FeatureFlagsWidget from './ui/feature-flags';
+import { setupDoubaoHostIfMatched, pingDoubao, doubaoCompose, doubaoAttach, doubaoSend, sendPromptToDoubao } from './bridge/doubao-bridge';
 
 // Build capture runner and expose simple console API
 const cfg = getFeatureConfig();
@@ -35,6 +36,13 @@ const CJAI = {
   answers,
   importAnswers: (doc: unknown) => { const arr = normalizeAnswers(doc as any); answers.setAll(arr); return arr.length; },
   features: cfg,
+  doubao: {
+    ping: () => pingDoubao(),
+    compose: (p: any) => doubaoCompose(p),
+    attach: (b: Blob, name?: string) => doubaoAttach(b, name),
+    send: () => doubaoSend(),
+    sendPrompt: (prompt: string, image?: Blob) => sendPromptToDoubao(prompt, image),
+  },
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,10 +51,14 @@ const CJAI = {
 logger.banner('Injected', 'CJ-AI ready');
 logger.info('Use in console:', 'CJAI.start()', 'CJAI.stop()', 'CJAI.one(n)');
 
-// Create Action Panel (Vercel-like) for quick actions
-const panel = new ActionPanel({ id: 'cjai-panel', title: 'CJ Capture', dock: 'bottom-right' });
-// Compose About + Feature Flags into info content
-{
+// Initialize Doubao host when running on doubao.com
+setupDoubaoHostIfMatched();
+
+if (isEnabled('actionPanel')) {
+  // Create Action Panel (Vercel-like) for quick actions
+  const panel = new ActionPanel({ id: 'cjai-panel', title: 'CJ Capture', dock: 'bottom-right' });
+  // Compose About + Feature Flags into info content
+  {
   const infoWrap = document.createElement('div');
   const doc = document.createElement('div');
   doc.className = 'cjai-section';
@@ -70,48 +82,54 @@ const panel = new ActionPanel({ id: 'cjai-panel', title: 'CJ Capture', dock: 'bo
   const flags = new FeatureFlagsWidget();
   infoWrap.append(doc, flags.el);
   panel.setDoc(infoWrap);
-}
+  }
 
-panel.clearActions();
-if (isEnabled('capture')) {
-  panel.addAction({ id: 'start', label: 'Start', kind: 'primary', tooltip: 'Capture all from current', hotkey: 'S', onClick: () => CJAI.start() });
-  panel.addAction({ id: 'stop', label: 'Stop', kind: 'danger', tooltip: 'Stop capture', hotkey: 'X', onClick: () => CJAI.stop() });
-}
-if (isEnabled('orderNav')) {
-  panel.addAction({ id: 'prev', label: 'Prev', tooltip: 'Go to previous', hotkey: 'A', onClick: () => { orderNav.prev(); } });
-  panel.addAction({ id: 'next', label: 'Next', tooltip: 'Go to next', hotkey: 'D', onClick: () => { orderNav.next(); } });
-}
+  panel.clearActions();
+  if (isEnabled('capture')) {
+    panel.addAction({ id: 'start', label: 'Start', kind: 'primary', tooltip: 'Capture all from current', hotkey: 'S', onClick: () => CJAI.start() });
+    panel.addAction({ id: 'stop', label: 'Stop', kind: 'danger', tooltip: 'Stop capture', hotkey: 'X', onClick: () => CJAI.stop() });
+  }
+  if (isEnabled('orderNav')) {
+    panel.addAction({ id: 'prev', label: 'Prev', tooltip: 'Go to previous', hotkey: 'A', onClick: () => { orderNav.prev(); } });
+    panel.addAction({ id: 'next', label: 'Next', tooltip: 'Go to next', hotkey: 'D', onClick: () => { orderNav.next(); } });
+  }
+  // Doubao Bridge (only on main domain)
+  if (isEnabled('doubaoBridge')) {
+    panel.addAction({ id: 'db-connect', label: 'Doubao: Ping', tooltip: 'Open Doubao (reuse) and send ping', onClick: () => { pingDoubao(); } });
+    panel.addAction({ id: 'db-send-test', label: 'Doubao: Send Test', tooltip: 'Compose test text and send', onClick: () => { doubaoCompose({ text: 'Hello from CJ-AI bridge at ' + new Date().toLocaleTimeString(), send: true }); } });
+  }
 
-// Preview tab
-if (isEnabled('capture')) {
-  const previewPane = panel.addTab({ id: 'preview', label: 'Preview' });
-  const gallery = new CaptureGallery(store);
-  previewPane.appendChild(gallery.el);
-}
-// Notepad tab
-const notepadPane = panel.addTab({ id: 'notepad', label: 'Notepad' });
-const notepad = new Notepad(answers);
-notepadPane.appendChild(notepad.el);
+  // Preview tab
+  if (isEnabled('capture')) {
+    const previewPane = panel.addTab({ id: 'preview', label: 'Preview' });
+    const gallery = new CaptureGallery(store);
+    previewPane.appendChild(gallery.el);
+  }
+  // Notepad tab
+  const notepadPane = panel.addTab({ id: 'notepad', label: 'Notepad' });
+  const notepad = new Notepad(answers);
+  notepadPane.appendChild(notepad.el);
 
-// Extract tab (Question JSON)
-if (isEnabled('questionExport')) {
-  const extractPane = panel.addTab({ id: 'extract', label: 'Extract' });
-  const extractor = new JsonExtractorPanel();
-  extractPane.appendChild(extractor.el);
-}
+  // Extract tab (Question JSON)
+  if (isEnabled('questionExport')) {
+    const extractPane = panel.addTab({ id: 'extract', label: 'Extract' });
+    const extractor = new JsonExtractorPanel();
+    extractPane.appendChild(extractor.el);
+  }
 
-// Track current question order and sync to Notepad preview list
-if (isEnabled('orderNav')) {
-  let lastOrder: number | null = null;
-  setInterval(() => {
-    try {
-      const cur = orderNav.current();
-      if (cur && cur !== lastOrder) {
-        lastOrder = cur;
-        notepad.setCurrentOrder(cur);
-      }
-    } catch {}
-  }, 600);
+  // Track current question order and sync to Notepad preview list
+  if (isEnabled('orderNav')) {
+    let lastOrder: number | null = null;
+    setInterval(() => {
+      try {
+        const cur = orderNav.current();
+        if (cur && cur !== lastOrder) {
+          lastOrder = cur;
+          notepad.setCurrentOrder(cur);
+        }
+      } catch {}
+    }, 600);
+  }
 }
 
 // Listen for retry events from gallery
@@ -130,15 +148,9 @@ if (isEnabled('submitHotkey')) {
     const isCtrl = ev.ctrlKey; // other platforms
     if ((isMeta || isCtrl) && !ev.shiftKey && !ev.altKey) {
       const key = ev.key?.toLowerCase();
-      if (key === 'g') {
-        // Avoid capturing in editable fields
-        const target = ev.target as HTMLElement | null;
-        const tag = (target?.tagName || '').toLowerCase();
-        const editable = target && (tag === 'input' || tag === 'textarea' || (target as any).isContentEditable);
-        if (!editable) {
-          ev.preventDefault();
-          clickSubmit();
-        }
+      if (key === 'e') {
+        ev.preventDefault();
+        clickSubmit();
       }
     }
   });

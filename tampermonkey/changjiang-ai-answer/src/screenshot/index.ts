@@ -5,36 +5,48 @@ declare global {
     html2canvas?: (el: HTMLElement, opts?: any) => Promise<HTMLCanvasElement>;
   }
 }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare const unsafeWindow: any;
 
 export interface ScreenshotOptions {
   scale?: number; // default devicePixelRatio
   backgroundColor?: string | null; // default '#fff'
 }
 
-export async function ensureHtml2Canvas(): Promise<boolean> {
-  if (typeof window !== 'undefined' && typeof window.html2canvas === 'function') return true;
-  // dynamic load from CDN once
-  const id = 'cj-ai-html2canvas';
-  if (document.getElementById(id)) {
-    // already injected, wait a bit for it to be ready
-    for (let i = 0; i < 20; i++) {
-      if (typeof window.html2canvas === 'function') return true;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    return typeof window.html2canvas === 'function';
-  }
-  const script = document.createElement('script');
-  script.id = id;
-  script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-  script.async = true;
-  const p = new Promise<boolean>((resolve) => {
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
+let lastScreenshotError: unknown = null;
+export function getLastScreenshotError(): unknown {
+  return lastScreenshotError;
+}
+
+function loadScriptOnce(id: string, src: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const exist = document.getElementById(id) as HTMLScriptElement | null;
+    if (exist) { resolve(true); return; }
+    const s = document.createElement('script');
+    s.id = id; s.src = src; s.async = true;
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
   });
-  document.head.appendChild(script);
-  const ok = await p;
-  if (!ok) logger.warn('Failed to load html2canvas from CDN');
-  return ok;
+}
+
+export async function ensureHtml2Canvas(): Promise<boolean> {
+  const g: any = (globalThis as any);
+  if (typeof (window as any).html2canvas === 'function') return true;
+  if (g && typeof g.html2canvas === 'function') { (window as any).html2canvas = g.html2canvas; return true; }
+  if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.html2canvas === 'function') { (window as any).html2canvas = unsafeWindow.html2canvas; return true; }
+
+  // runtime inject fallback
+  const ok = await loadScriptOnce('cjai-html2canvas', 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
+  if (!ok) logger.warn('Failed to inject html2canvas from CDN');
+  for (let i = 0; i < 50; i++) {
+    if (typeof (window as any).html2canvas === 'function') return true;
+    if (g && typeof g.html2canvas === 'function') { (window as any).html2canvas = g.html2canvas; return true; }
+    if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.html2canvas === 'function') { (window as any).html2canvas = unsafeWindow.html2canvas; return true; }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  logger.warn('html2canvas is not available');
+  return false;
 }
 
 export async function captureElementToCanvas(el: HTMLElement, opts: ScreenshotOptions = {}): Promise<HTMLCanvasElement | null> {
@@ -54,6 +66,7 @@ export async function captureElementToCanvas(el: HTMLElement, opts: ScreenshotOp
     });
     return canvas;
   } catch (e) {
+    lastScreenshotError = e;
     logger.error('captureElementToCanvas failed', e);
     return null;
   }
@@ -85,25 +98,22 @@ export async function saveElementAsPng(el: HTMLElement, filename: string, opts: 
 }
 
 // Optional ZIP support via JSZip CDN
-declare global {
-  interface Window { JSZip?: any }
-}
+declare global { interface Window { JSZip?: any } }
 
 async function ensureJSZip(): Promise<boolean> {
-  if (window.JSZip) return true;
-  const id = 'cjai-jszip';
-  if (!document.getElementById(id)) {
-    const s = document.createElement('script');
-    s.id = id;
-    s.src = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
-    s.async = true;
-    document.head.appendChild(s);
-  }
+  const g: any = (globalThis as any);
+  if ((window as any).JSZip) return true;
+  if (g && g.JSZip) { (window as any).JSZip = g.JSZip; return true; }
+  if (typeof unsafeWindow !== 'undefined' && unsafeWindow.JSZip) { (window as any).JSZip = unsafeWindow.JSZip; return true; }
+  const ok = await loadScriptOnce('cjai-jszip', 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+  if (!ok) logger.warn('Failed to inject JSZip from CDN');
   for (let i = 0; i < 50; i++) {
-    if (window.JSZip) return true;
+    if ((window as any).JSZip) return true;
+    if (g && g.JSZip) { (window as any).JSZip = g.JSZip; return true; }
+    if (typeof unsafeWindow !== 'undefined' && unsafeWindow.JSZip) { (window as any).JSZip = unsafeWindow.JSZip; return true; }
     await new Promise((r) => setTimeout(r, 100));
   }
-  return !!window.JSZip;
+  return !!(window as any).JSZip;
 }
 
 export async function downloadAsZip(files: Array<{ name: string; blob: Blob }>, zipName = 'captures.zip'): Promise<boolean> {

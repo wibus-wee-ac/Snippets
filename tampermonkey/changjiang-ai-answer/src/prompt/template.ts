@@ -13,7 +13,7 @@ export interface PromptOptions {
 const zhIntro = `你是一个严谨的答题助手。根据我提供的“按顺序排列”的题目截图，输出 JSON 答案。`;
 const zhRules = `
 要求：
-- 仅输出 JSON，不要解释或多余文本。
+- 仅输出 JSON，请使用 \`\`\` 包裹，不要解释或多余文本。
 - \`order\` 从 1 开始，按我提供的题目顺序递增。
 - 单选/多选：在 \`choice\` 字段中返回大写字母数组，例如 ["A"] 或 ["A","C"]。
 - 判断题：\`choice\` 使用 ["T"] 或 ["F"] 表示对/错。

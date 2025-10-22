@@ -1,6 +1,8 @@
 import { extractExamQuestions } from '../extract/exam-parser';
 import logger from '../logger';
 import { buildQuestionAnswerPrompt } from '../prompt/questions';
+import { pullDoubaoLastJson } from '../bridge/doubao-bridge';
+import { sendPromptToDoubao } from '../bridge/doubao-bridge';
 
 export class JsonExtractorPanel {
   readonly el: HTMLElement;
@@ -9,6 +11,7 @@ export class JsonExtractorPanel {
   private btnCopy: HTMLButtonElement;
   private btnDownload: HTMLButtonElement;
   private btnCopyPrompt: HTMLButtonElement;
+  private btnSendDoubao: HTMLButtonElement;
   private langSelect: HTMLSelectElement;
   private includeExample: HTMLInputElement;
   private minifyJson: HTMLInputElement;
@@ -28,6 +31,7 @@ export class JsonExtractorPanel {
     const btnCopy = document.createElement('button'); btnCopy.className = 'cjai-btn'; btnCopy.textContent = 'Copy JSON';
     const btnDownload = document.createElement('button'); btnDownload.className = 'cjai-btn'; btnDownload.textContent = 'Download';
     const btnPrompt = document.createElement('button'); btnPrompt.className = 'cjai-btn'; btnPrompt.textContent = 'Copy Prompt';
+    const btnSend = document.createElement('button'); btnSend.className = 'cjai-btn'; btnSend.textContent = 'Send to Doubao';
     const lang = document.createElement('select'); lang.className = 'cjai-btn';
     const optZh = document.createElement('option'); optZh.value = 'zh'; optZh.textContent = '中文';
     const optEn = document.createElement('option'); optEn.value = 'en'; optEn.textContent = 'English';
@@ -38,19 +42,20 @@ export class JsonExtractorPanel {
     const minLabel = document.createElement('label'); minLabel.style.display = 'inline-flex'; minLabel.style.alignItems = 'center'; minLabel.style.gap = '4px';
     const chkMin = document.createElement('input'); chkMin.type = 'checkbox'; chkMin.checked = true; const minTxt = document.createElement('span'); minTxt.textContent = 'Minify'; minLabel.append(chkMin, minTxt);
     const status = document.createElement('div'); status.style.marginLeft = 'auto'; status.style.fontSize = '12px'; status.style.color = 'var(--cjai-ink-muted)';
-    bar.append(btnScan, btnCopy, btnDownload, btnPrompt, lang, exLabel, minLabel, status);
+    bar.append(btnScan, btnCopy, btnDownload, btnPrompt, btnSend, lang, exLabel, minLabel, status);
 
     const ta = document.createElement('textarea');
     ta.style.flex = '1'; ta.style.width = '100%'; ta.style.resize = 'none';
     ta.style.border = '1px solid var(--cjai-border)'; ta.style.borderRadius = '8px'; ta.style.padding = '8px';
 
     root.append(bar, ta);
-    this.el = root; this.textarea = ta; this.btnScan = btnScan; this.btnCopy = btnCopy; this.btnDownload = btnDownload; this.btnCopyPrompt = btnPrompt; this.langSelect = lang; this.includeExample = chkExample; this.minifyJson = chkMin; this.status = status;
+    this.el = root; this.textarea = ta; this.btnScan = btnScan; this.btnCopy = btnCopy; this.btnDownload = btnDownload; this.btnCopyPrompt = btnPrompt; this.btnSendDoubao = btnSend; this.langSelect = lang; this.includeExample = chkExample; this.minifyJson = chkMin; this.status = status;
 
     this.btnScan.onclick = () => this.scan();
     this.btnCopy.onclick = () => this.copy();
     this.btnDownload.onclick = () => this.download();
     this.btnCopyPrompt.onclick = () => this.copyPrompt();
+    this.btnSendDoubao.onclick = () => this.sendToDoubao();
   }
 
   private setStatus(msg: string, ok = true) {
@@ -115,6 +120,40 @@ export class JsonExtractorPanel {
     } catch (e) {
       logger.error('Copy prompt failed', e);
       this.setStatus('Copy prompt failed', false);
+    }
+  }
+
+  async sendToDoubao() {
+    const txt = this.textarea.value.trim();
+    if (!txt) { this.setStatus('No JSON', false); return; }
+    try {
+      const prompt = buildQuestionAnswerPrompt(txt, {
+        lang: this.langSelect.value as any,
+        includeExample: this.includeExample.checked,
+        minifyJson: this.minifyJson.checked,
+        extraNotes: [
+          '请严格依题目顺序（order 从 1 开始）。',
+          '如题目为填空题，按空序填写 answerText 数组。',
+        ],
+      });
+      const ok = sendPromptToDoubao(prompt);
+      if (!ok) { this.setStatus('Bridge not ready', false); return; }
+      this.setStatus('Sent to Doubao');
+      // Auto pull result after a short delay
+      setTimeout(async () => {
+        try {
+          const res = await pullDoubaoLastJson(20000);
+          if (!res.ok || !res.text) { this.setStatus('No AI JSON yet'); return; }
+          const count = (window as any).CJAI?.importAnswers?.(res.text) ?? 0;
+          this.setStatus(`Imported ${count} answers`);
+        } catch (e) {
+          logger.error('Auto import from Doubao failed', e);
+          this.setStatus('Auto import failed', false);
+        }
+      }, 5000);
+    } catch (e) {
+      logger.error('Send to Doubao failed', e);
+      this.setStatus('Send failed', false);
     }
   }
 }

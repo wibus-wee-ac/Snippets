@@ -1,7 +1,7 @@
 import logger from '../logger';
 import orderNav from '../helper/order-nav.helper';
 import { waitForQuestionElement } from '../helper/find-question.helper';
-import { captureElementToBlob, ScreenshotOptions } from '../screenshot';
+import { captureElementToBlob, ScreenshotOptions, getLastScreenshotError } from '../screenshot';
 import { waitUntil, sleep } from '../utils/wait';
 import type { CaptureItem } from '../state/capture-store';
 
@@ -59,8 +59,18 @@ export class QuestionCaptureRunner {
     // capture to blob only (defer downloading)
     const blob = await captureElementToBlob(el, this.options.screenshot);
     if (!blob) {
-      logger.error('Capture failed for order', order);
-      this.options.onCapture?.({ order, total: total ?? null, filename, blob: null, url: null, status: 'error', createdAt: Date.now(), selected: false, error: 'capture-failed' });
+      const rect = el.getBoundingClientRect();
+      const info = {
+        reason: getLastScreenshotError(),
+        html2canvas: typeof (window as any).html2canvas,
+        rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
+        offset: { w: (el as HTMLElement).offsetWidth, h: (el as HTMLElement).offsetHeight },
+        visibility: getComputedStyle(el).visibility,
+        display: getComputedStyle(el).display,
+        inDOM: document.contains(el),
+      } as const;
+      logger.error('Capture failed for order', order, info);
+      this.options.onCapture?.({ order, total: total ?? null, filename, blob: null, url: null, status: 'error', createdAt: Date.now(), selected: false, error: JSON.stringify(info) });
       return false;
     }
 

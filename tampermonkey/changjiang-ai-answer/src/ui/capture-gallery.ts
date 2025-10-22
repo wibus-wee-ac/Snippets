@@ -2,6 +2,10 @@ import type CaptureStore from '../state/capture-store';
 import type { CaptureItem } from '../state/capture-store';
 import { downloadAsZip, downloadSequential, downloadToDirectory } from '../screenshot';
 import logger from '../logger';
+import { buildAnswerPrompt } from '../prompt/template';
+import { sendPromptToDoubao } from '../bridge/doubao-bridge';
+import { isEnabled } from '../config/feature-flags';
+import { sleep } from '../utils/wait';
 
 export class CaptureGallery {
   readonly el: HTMLElement;
@@ -25,7 +29,8 @@ export class CaptureGallery {
     const btnZip = this.btn('Download Zip', () => this.downloadZip());
     const btnDir = this.btn('Save to Folder', () => this.saveToDir());
     const btnSeq = this.btn('Download Files', () => this.downloadSequential());
-    toolbar.append(btnSelectAll, btnSelectNone, btnZip, btnDir, btnSeq, btnClear);
+    const btnSend = isEnabled('doubaoBridge') ? this.btn('Send Selected → Doubao', () => this.sendSelectedToDoubao()) : null;
+    toolbar.append(btnSelectAll, btnSelectNone, btnZip, btnDir, btnSeq, ...(btnSend ? [btnSend] : []), btnClear);
 
     const list = document.createElement('div');
     list.style.display = 'grid';
@@ -65,7 +70,8 @@ export class CaptureGallery {
     const right = document.createElement('div'); right.style.display = 'flex'; right.style.gap = '6px';
     const btnRetry = this.btn('Retry', () => this.retry(item.order));
     const btnView = this.btn('Open', () => { if (item.url) window.open(item.url, '_blank'); });
-    right.append(btnRetry, btnView);
+    const btnSend = isEnabled('doubaoBridge') ? this.btn('Send', () => this.sendOneToDoubao(item)) : null;
+    right.append(btnRetry, btnView, ...(btnSend ? [btnSend] : []));
     head.append(left, right);
 
     const imgWrap = document.createElement('div'); imgWrap.style.aspectRatio = '4/3'; imgWrap.style.overflow = 'hidden'; imgWrap.style.background = 'rgba(0,0,0,0.03)'; imgWrap.style.border = '1px solid var(--cjai-border)'; imgWrap.style.borderRadius = '6px';
@@ -79,6 +85,33 @@ export class CaptureGallery {
     const meta = document.createElement('div'); meta.style.fontSize = '12px'; meta.style.color = 'var(--cjai-ink-muted)'; meta.textContent = item.filename;
     card.append(head, imgWrap, meta);
     return card;
+  }
+
+  private buildImagePrompt(order?: number): string {
+    const extra: string[] = [];
+    if (order != null) extra.push(`仅针对当前图片作答；请只返回一个 answers 项，并将 order 固定为 ${order}。`);
+    else extra.push('仅针对当前图片作答；请只返回一个 answers 项。');
+    return buildAnswerPrompt({ lang: 'zh', includeExample: true, extraNotes: extra });
+  }
+
+  private async sendOneToDoubao(item: CaptureItem) {
+    try {
+      if (!item.blob) { logger.warn('No image to send'); return; }
+      const prompt = this.buildImagePrompt(item.order);
+      const ok = sendPromptToDoubao(prompt, item.blob, item.filename || `question-${item.order}.png`);
+      if (!ok) logger.warn('Send to Doubao failed to dispatch');
+    } catch (e) { logger.error('Send one to Doubao failed', e); }
+  }
+
+  private async sendSelectedToDoubao() {
+    const items = this.store.selected();
+    if (!items.length) { logger.warn('No selected captures'); return; }
+    logger.banner('Doubao', `Sending ${items.length} selected captures`);
+    for (const it of items) {
+      await this.sendOneToDoubao(it);
+      await sleep(1600);
+    }
+    logger.success('Queued sending to Doubao');
   }
 
   private async retry(order: number) {

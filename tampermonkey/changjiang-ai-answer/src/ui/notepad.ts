@@ -1,6 +1,7 @@
 import AnswersStore, { normalizeAnswers } from '../state/answers-store';
 import { buildAnswerPrompt, PromptOptions } from '../prompt/template';
 import logger from '../logger';
+import { pullDoubaoLastJson } from '../bridge/doubao-bridge';
 
 export class Notepad {
   readonly el: HTMLElement;
@@ -15,6 +16,7 @@ export class Notepad {
   private inputWrap: HTMLElement;
   private collapsed = false;
   private highlightedOrder: number | null = null;
+  private btnPullDoubao: HTMLButtonElement;
 
   constructor(private store: AnswersStore) {
     const root = document.createElement('div');
@@ -32,6 +34,7 @@ export class Notepad {
     toolbar.style.padding = '6px';
     const btnPrompt = document.createElement('button'); btnPrompt.className = 'cjai-btn cjai-btn--primary'; btnPrompt.textContent = 'Copy Prompt';
     const btnParse = document.createElement('button'); btnParse.className = 'cjai-btn'; btnParse.textContent = 'Parse JSON';
+    const btnPull = document.createElement('button'); btnPull.className = 'cjai-btn'; btnPull.textContent = 'Pull Doubao';
     // const btnExample = document.createElement('button'); btnExample.className = 'cjai-btn'; btnExample.textContent = 'Copy Example';
     // const btnCopy = document.createElement('button'); btnCopy.className = 'cjai-btn'; btnCopy.textContent = 'Copy Current';
     const lang = document.createElement('select');
@@ -45,7 +48,7 @@ export class Notepad {
     chk.append(includeExample, chkText);
     const status = document.createElement('div'); status.style.marginLeft = 'auto'; status.style.fontSize = '12px'; status.style.color = 'var(--cjai-ink-muted)';
     const btnToggle = document.createElement('button'); btnToggle.className = 'cjai-btn'; btnToggle.textContent = 'Hide Input';
-    toolbar.append(btnPrompt, lang, chk, btnParse, btnToggle, status);
+    toolbar.append(btnPrompt, lang, chk, btnParse, btnPull, btnToggle, status);
 
     const inputWrap = document.createElement('div');
     inputWrap.style.display = 'block';
@@ -63,10 +66,11 @@ export class Notepad {
     list.style.borderRadius = '8px'; list.style.padding = '8px';
 
     root.append(toolbar, inputWrap, list);
-    this.el = root; this.input = area; this.btnParse = btnParse; this.btnPrompt = btnPrompt; this.langSelect = lang; this.includeExample = includeExample; this.list = list; this.status = status; this.btnToggleInput = btnToggle; this.inputWrap = inputWrap;
+    this.el = root; this.input = area; this.btnParse = btnParse; this.btnPrompt = btnPrompt; this.langSelect = lang; this.includeExample = includeExample; this.list = list; this.status = status; this.btnToggleInput = btnToggle; this.inputWrap = inputWrap; this.btnPullDoubao = btnPull;
 
     this.btnParse.onclick = () => this.parse();
     this.btnPrompt.onclick = () => this.copyPrompt();
+    this.btnPullDoubao.onclick = () => this.pullDoubao();
 
     this.btnToggleInput.onclick = () => this.setInputCollapsed(!this.collapsed);
     this.store.subscribe(() => this.render());
@@ -76,6 +80,10 @@ export class Notepad {
   private setStatus(msg: string, ok = true) {
     this.status.textContent = msg;
     this.status.style.color = ok ? 'var(--cjai-ink-muted)' : '#e11d48';
+  }
+
+  private setInputText(text: string) {
+    this.input.value = text;
   }
 
   private async copy(text: string) {
@@ -89,6 +97,29 @@ export class Notepad {
     };
     const text = buildAnswerPrompt(opts);
     await this.copy(text);
+  }
+
+  private async pullDoubao() {
+    try {
+      this.setStatus('Pulling from Doubao…');
+      const res = await pullDoubaoLastJson(12000);
+      if (!res.ok || !res.text) { this.setStatus(res.reason || 'No JSON found', false); return; }
+      // Put raw JSON into input area for visibility
+      this.setInputText(res.text);
+      // Try parse and import directly
+      try {
+        const items = normalizeAnswers(res.text);
+        for (const it of items) this.store.upsert(it);
+        this.afterParseSuccess(items.length);
+        this.setStatus('Imported from Doubao');
+      } catch (e) {
+        logger.error('Normalize answers failed', e);
+        this.setStatus('JSON parse error', false);
+      }
+    } catch (e) {
+      logger.error('Pull Doubao failed', e);
+      this.setStatus('Pull failed', false);
+    }
   }
 
   setInputCollapsed(v: boolean) {

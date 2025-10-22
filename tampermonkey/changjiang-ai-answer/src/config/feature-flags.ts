@@ -1,4 +1,4 @@
-export type DomainKey = 'main' | 'exam' | 'unknown';
+export type DomainKey = 'main' | 'exam' | 'doubao' | 'unknown';
 
 export type FeatureName =
   | 'actionPanel'
@@ -7,7 +7,8 @@ export type FeatureName =
   | 'capture' // capture runner + preview gallery
   | 'orderNav'
   | 'submitHotkey'
-  | 'questionExport';
+  | 'questionExport'
+  | 'doubaoBridge';
 
 export interface FeatureConfig {
   domain: DomainKey;
@@ -36,10 +37,25 @@ const CONFIGS: FeatureConfig[] = [
       orderNav: true,
       submitHotkey: true,
       questionExport: false,
+      doubaoBridge: true,
     },
     selectors: {
       submitButton: MAIN_SUBMIT_SELECTOR,
       questionContainerExact: MAIN_QUESTION_EXACT,
+    },
+  },
+  {
+    domain: 'doubao',
+    hostMatch: (h) => /(^|\.)doubao\.com$/.test(h),
+    flags: {
+      actionPanel: false, // hide panel on doubao
+      notepad: false,
+      prompt: false,
+      capture: false,
+      orderNav: false,
+      submitHotkey: false,
+      questionExport: false,
+      doubaoBridge: true, // only bridge host
     },
   },
   {
@@ -53,6 +69,7 @@ const CONFIGS: FeatureConfig[] = [
       orderNav: false,
       submitHotkey: true,
       questionExport: true,
+      doubaoBridge: false,
     },
     selectors: {
       // reuse defaults unless overridden later
@@ -76,6 +93,7 @@ export function detectDomain(host = location.hostname): FeatureConfig {
         orderNav: false,
         submitHotkey: false,
         questionExport: false,
+        doubaoBridge: false,
       },
     }
   );
