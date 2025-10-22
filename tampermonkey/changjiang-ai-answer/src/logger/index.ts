@@ -23,8 +23,14 @@ const BRAND = 'CJ-AI';
 
 // Optional UI toast presenter, injected by app (e.g., ActionPanel)
 let gToastPresenter: ((message: string, opts?: ToastOptions) => void) | null = null;
+let gToastEchoLevels: Set<ToastType> = new Set();
 export function setToastPresenter(presenter: ((message: string, opts?: ToastOptions) => void) | null) {
   gToastPresenter = presenter;
+}
+
+// Optional: echo certain log levels as UI toast (e.g., ['info','warn'])
+export function setToastEchoLevels(levels: ToastType[] | null) {
+  gToastEchoLevels = new Set(levels || []);
 }
 
 // Visual identity for our logs
@@ -141,6 +147,17 @@ export interface CJLogger {
 function createLogger(scope?: string): CJLogger {
   let currentLevel: LogLevel = getStoredLevel();
 
+  const toMsg = (args: unknown[]): string => {
+    try {
+      const s = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      return s.length > 220 ? s.slice(0, 217) + '...' : s;
+    } catch { return ''; }
+  };
+
   const logAt = (want: LogLevel, method: keyof Console | 'success') =>
     (...args: unknown[]) => {
       if (!shouldLog(currentLevel, want)) return;
@@ -164,6 +181,13 @@ function createLogger(scope?: string): CJLogger {
           break;
         default:
           c.log(fmtStr, brand, lvl, none, ...args);
+      }
+      // Optional echo to UI toast
+      if (gToastPresenter) {
+        const type: ToastType | null = method === 'error' ? 'error' : method === 'warn' ? 'warn' : method === 'success' ? 'success' : (want === 'info' ? 'info' : null);
+        if (type && gToastEchoLevels.has(type)) {
+          try { gToastPresenter(toMsg(args), { type }); } catch {}
+        }
       }
     };
 

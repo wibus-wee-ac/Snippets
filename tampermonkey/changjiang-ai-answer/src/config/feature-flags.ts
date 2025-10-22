@@ -8,7 +8,8 @@ export type FeatureName =
   | 'orderNav'
   | 'submitHotkey'
   | 'questionExport'
-  | 'doubaoBridge';
+  | 'doubaoBridge'
+  | 'autoWatch'; // YukeTang auto watch (video/ppt/audio)
 
 export interface FeatureConfig {
   domain: DomainKey;
@@ -38,6 +39,7 @@ const CONFIGS: FeatureConfig[] = [
       submitHotkey: true,
       questionExport: false,
       doubaoBridge: true,
+      autoWatch: true,
     },
     selectors: {
       submitButton: MAIN_SUBMIT_SELECTOR,
@@ -56,6 +58,7 @@ const CONFIGS: FeatureConfig[] = [
       submitHotkey: false,
       questionExport: false,
       doubaoBridge: true, // only bridge host
+      autoWatch: false,
     },
   },
   {
@@ -70,6 +73,7 @@ const CONFIGS: FeatureConfig[] = [
       submitHotkey: true,
       questionExport: true,
       doubaoBridge: false,
+      autoWatch: false,
     },
     selectors: {
       // reuse defaults unless overridden later
@@ -94,6 +98,7 @@ export function detectDomain(host = location.hostname): FeatureConfig {
         submitHotkey: false,
         questionExport: false,
         doubaoBridge: false,
+        autoWatch: false
       },
     }
   );

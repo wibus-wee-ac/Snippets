@@ -611,7 +611,7 @@ function isAttachmentUploading(el: HTMLElement): boolean {
   const scope = (container || el);
   const overlay = scope.querySelector('[class*="loading-overlay"], .semi-progress-circle') as HTMLElement | null;
   if (overlay && isElementVisible(overlay)) return true;
-  const progress = overlay?.getAttribute('aria-valuenow');
+  const progress = (overlay! as HTMLElement)?.getAttribute('aria-valuenow');
   if (progress && Number(progress) < 100) return true;
   // consider image loaded when natural size is available, ignore CSS width/height 0
   const img = (scope.querySelector('img.image-Lgfrf0') || scope.querySelector('[data-testid="mdbox_image"] img') || scope.querySelector('img[imagex-type]') || scope.querySelector('img')) as HTMLImageElement | null;

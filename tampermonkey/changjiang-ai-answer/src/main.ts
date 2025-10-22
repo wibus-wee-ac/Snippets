@@ -1,5 +1,5 @@
 import './style.css';
-import logger, { setToastPresenter } from './logger';
+import logger, { setToastEchoLevels, setToastPresenter } from './logger';
 import orderNav from './helper/order-nav.helper';
 import { waitForQuestionElement } from './helper/find-question.helper';
 import { QuestionCaptureRunner } from './runner/capture-questions';
@@ -10,7 +10,6 @@ import JsonExtractorPanel from './ui/json-extractor';
 import getFeatureConfig, { isEnabled } from './config/feature-flags';
 import AnswersStore, { normalizeAnswers } from './state/answers-store';
 import Notepad from './ui/notepad';
-import { GM_info } from '$';
 import { clickSubmit } from './helper/submit.helper';
 import FeatureFlagsWidget from './ui/feature-flags';
 import { setupDoubaoHostIfMatched, pingDoubao, doubaoCompose, doubaoAttach, doubaoSend, sendPromptToDoubao, doubaoWaitUploads, waitForLastJson, ensureDoubaoReady } from './bridge/doubao-bridge';
@@ -59,9 +58,10 @@ setupDoubaoHostIfMatched();
 
 if (isEnabled('actionPanel')) {
   // Create Action Panel (Vercel-like) for quick actions
-  const panel = new ActionPanel({ id: 'cjai-panel', title: 'CJ Capture', dock: 'bottom-right' });
+  const panel = new ActionPanel({ id: 'cjai-panel', title: 'CJ N-IN-1 ToolBox', dock: 'bottom-right' });
   // Hook logger toast into panel toast
   setToastPresenter((msg, opts) => panel.toast(msg, opts as any));
+  setToastEchoLevels(['error', 'warn', 'success', 'info']);
   // Compose About + Feature Flags into info content
   {
   const infoWrap = document.createElement('div');
@@ -77,10 +77,9 @@ if (isEnabled('actionPanel')) {
 • Feature Flags：Info 面板下方可切换功能开关；Apply 后 Reload 生效。一般来说，并不需要修改这些设置，功能会随着作用域自动更新。
 
 ## Brand New Features
-
 • Doubao Bridge: 在 doubao.com 页面可使用 CJAI.doubao 相关方法与豆包 AI 桥接，发送提示词并接收 AI 解题。
+• Auto Watch: 在“课程播放”页面自动播放未完成的视频课节，支持倍速播放和自动跳过已完成课节。
 
-• 未来：自动查看课程视频能力、更多题型支持
 `;
   doc.append(docTitle, docBody);
   const flags = new FeatureFlagsWidget();
@@ -181,6 +180,14 @@ if (isEnabled('actionPanel')) {
     const extractPane = panel.addTab({ id: 'extract', label: 'Extract' });
     const extractor = new JsonExtractorPanel();
     extractPane.appendChild(extractor.el);
+  }
+
+  // YukeTang Auto Watch tab
+  if (isEnabled('autoWatch')) {
+    const watchPane = panel.addTab({ id: 'watch', label: 'Watch' });
+    const AutoWatchPanel = (await import('./ui/auto-watch')).default;
+    const widget = new AutoWatchPanel();
+    watchPane.appendChild(widget.el);
   }
 
   // Track current question order and sync to Notepad preview list

@@ -235,10 +235,42 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 10px 8px;
   border: 1px solid var(--cjai-border);
   border-radius: 8px;
   background: var(--cjai-bg);
+  margin-bottom: 8px;
+}
+/* 
+.cjai-row[data-selected="true"] {
+  background: var(--cjai-bg-muted);
+} */
+
+.cjai-row--clickable { cursor: pointer; }
+.cjai-row--clickable:hover { background: var(--cjai-bg-muted); }
+
+/* Checkbox (shadcn-like) */
+.cjai-check { display: inline-flex; align-items: center; gap: 8px; user-select: none; }
+.cjai-check input {
+  appearance: none;
+  width: 16px; height: 16px;
+  border: 1px solid var(--cjai-border);
+  border-radius: 4px;
+  background: #fff;
+  display: inline-block;
+  position: relative;
+  transition: all .12s ease;
+  outline: none;
+}
+.cjai-check input:hover { border-color: var(--cjai-ink); }
+.cjai-check input:focus { box-shadow: 0 0 0 3px rgba(0,0,0,.06); }
+.cjai-check input:checked { background: var(--cjai-accent); border-color: var(--cjai-accent); }
+.cjai-check input:checked::after {
+  content: '';
+  position: absolute; left: 4px; top: 1px;
+  width: 4px; height: 8px;
+  border: 2px solid #fff; border-top: none; border-left: none;
+  transform: rotate(45deg);
 }
 
 .cjai-row__label {
