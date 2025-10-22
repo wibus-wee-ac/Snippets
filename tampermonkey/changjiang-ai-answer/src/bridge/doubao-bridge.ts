@@ -41,8 +41,8 @@ export function setupDoubaoHostIfMatched() {
       }
 
       if (send) {
-        // small wait to allow image preview attach
-        if (attached) { try { await sleep(900); } catch {} }
+        // Wait uploads to finish if any
+        if (attached) { try { await waitUploadsDone(comp, 30000); } catch {} }
         const ok = await trySend(comp);
         reply('db.result', { ok, attached });
         return;
@@ -94,6 +94,21 @@ export function setupDoubaoHostIfMatched() {
       reply('db.lastJson', { ok: false, reason: String(e) });
     }
   });
+
+  // Wait until all attached images (if any) in composer finish uploading/rendering
+  host.on('db.waitUploads', async (msg, reply) => {
+    const payload = (msg.payload || {}) as any;
+    const timeoutMs = Number(payload.timeoutMs ?? 25000);
+    try {
+      const comp = await findDoubaoComposer(6000);
+      if (!comp) { reply('db.uploads', { ok: false, reason: 'composer-not-found' }); return; }
+      const ok = await waitUploadsDone(comp, timeoutMs);
+      const count = countAttachments(comp);
+      reply('db.uploads', { ok, count });
+    } catch (e) {
+      reply('db.uploads', { ok: false, reason: String(e) });
+    }
+  });
   logger.info('Doubao host ready for CJ-AI bridge');
 }
 
@@ -106,7 +121,25 @@ function focusWin() {
 }
 
 export function connectDoubao(): boolean {
-  if (gWin && !gWin.closed && gClient) { focusWin(); return true; }
+  // If popup exists, always navigate back to the base URL and focus
+  if (gWin && !gWin.closed) {
+    try {
+      // if already on target, force reload to ensure host is ready
+      if (gWin.location && gWin.location.href && gWin.location.href.replace(/#.*$/, '') === DOUHAO_URL) {
+        gWin.location.reload();
+      } else {
+        gWin.location.href = DOUHAO_URL;
+      }
+    } catch {}
+    if (!gClient) {
+      try { gClient = createBridgeClient(gWin, DOUHAO_ORIGIN); } catch {}
+    }
+    if (gPongUnsub) { try { gPongUnsub(); } catch {} gPongUnsub = null; }
+    if (gClient) gPongUnsub = gClient.on('pong', (m) => { logger.success('Doubao pong', m.payload); });
+    focusWin();
+    return true;
+  }
+  // Otherwise open a fresh popup at target URL
   const win = openBridgePopup(DOUHAO_URL, 'cjai-doubao', 'width=980,height=720');
   if (!win) { logger.warn('Open Doubao popup failed'); return false; }
   gWin = win;
@@ -181,6 +214,22 @@ export function sendPromptToDoubao(prompt: string, imageBlob?: Blob, fileName = 
   return doubaoCompose({ text: prompt, send: true });
 }
 
+export async function ensureDoubaoReady(timeoutMs = 12000, pingEveryMs = 800): Promise<boolean> {
+  if (!gClient || !gWin || gWin.closed) {
+    const ok = connectDoubao();
+    if (!ok) return false;
+  }
+  return new Promise((resolve) => {
+    let done = false;
+    const off = gClient!.on('pong', () => {
+      if (done) return; done = true; off(); clearTimeout(timer); clearInterval(interval); resolve(true);
+    });
+    const interval = setInterval(() => { try { gClient!.send('ping', { ts: Date.now() }); } catch {} }, Math.max(300, pingEveryMs));
+    const timer = setTimeout(() => { if (done) return; done = true; off(); clearInterval(interval); resolve(false); }, Math.max(1000, timeoutMs));
+    try { gClient!.send('ping', { ts: Date.now() }); } catch {}
+  });
+}
+
 export function pullDoubaoLastJson(timeoutMs = 8000): Promise<{ ok: boolean; text?: string; reason?: string }> {
   if (!gClient || !gWin || gWin.closed) {
     const ok = connectDoubao();
@@ -199,6 +248,32 @@ export function pullDoubaoLastJson(timeoutMs = 8000): Promise<{ ok: boolean; tex
     });
     try { gClient!.send('db.getLastJson'); } catch { off(); clearTimeout(timer); resolve({ ok: false, reason: 'send-failed' }); }
   });
+}
+
+export async function doubaoWaitUploads(timeoutMs = 25000): Promise<{ ok: boolean; count?: number; reason?: string }> {
+  if (!gClient || !gWin || gWin.closed) {
+    const ok = connectDoubao();
+    if (!ok) return { ok: false, reason: 'no-bridge' };
+  }
+  return new Promise((resolve) => {
+    let done = false;
+    const timer = setTimeout(() => { if (!done) { off(); done = true; resolve({ ok: false, reason: 'timeout' }); } }, timeoutMs + 1000);
+    const off = gClient!.on('db.uploads', (m) => {
+      if (done) return; done = true; off(); clearTimeout(timer);
+      const p: any = m.payload || {}; resolve({ ok: !!p.ok, count: p.count, reason: p.reason });
+    });
+    try { gClient!.send('db.waitUploads', { timeoutMs }); } catch { off(); clearTimeout(timer); resolve({ ok: false, reason: 'send-failed' }); }
+  });
+}
+
+export async function waitForLastJson(maxWaitMs = 60000, intervalMs = 2000): Promise<{ ok: boolean; text?: string; reason?: string }> {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    const res = await pullDoubaoLastJson(Math.min(intervalMs + 2000, maxWaitMs));
+    if (res.ok && res.text) return res;
+    await sleep(intervalMs);
+  }
+  return { ok: false, reason: 'timeout' };
 }
 
 // ===============================
@@ -222,6 +297,18 @@ function isElementVisible(el: Element | null): el is HTMLElement {
   return true;
 }
 
+
+function findComposerRootFrom(el: HTMLElement): HTMLElement {
+  // Prefer stable wrappers around the editor/input area
+  const candidates = [
+    el.closest('div[class*="editor-container-"]'),
+    el.closest('div[class*="input-content-container-"]'),
+    el.closest('div[class*="container-QrxCka"]'),
+    el.closest('div[class*="footer-"]'),
+  ].filter(Boolean) as HTMLElement[];
+  if (candidates.length) return candidates[0]!;
+  return findContainer(el);
+}
 
 async function findDoubaoComposer(timeoutMs = 5000): Promise<ComposerElements | null> {
   const start = Date.now();
@@ -247,7 +334,7 @@ async function findDoubaoComposer(timeoutMs = 5000): Promise<ComposerElements | 
 
       const inputEl: HTMLElement | null = (textarea as any) || editable;
       if (inputEl && isElementVisible(inputEl)) {
-        const container = findContainer(inputEl);
+        const container = findComposerRootFrom(inputEl);
         const sendBtn = findSendButton(container);
         return { textarea: textarea || null, editable: textarea ? null : editable, container, sendBtn };
       }
@@ -299,6 +386,7 @@ function setComposerText(comp: ComposerElements, text: string): boolean {
       if (setter) setter.call(comp.textarea, text);
       else comp.textarea.value = text;
       comp.textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      try { comp.textarea.focus(); } catch {}
       return true;
     }
     if (comp.editable) {
@@ -311,23 +399,39 @@ function setComposerText(comp: ComposerElements, text: string): boolean {
   } catch { return false; }
 }
 
-async function trySend(comp: ComposerElements): Promise<boolean> {
-  // prefer Enter on input element (avoid custom click handlers/portals)
+function readComposerText(comp: ComposerElements): string {
+  try {
+    if (comp.textarea) return (comp.textarea.value || '').trim();
+    if (comp.editable) return (comp.editable.textContent || '').trim();
+  } catch {}
+  return '';
+}
+
+async function trySend(comp: ComposerElements, opts: { timeoutMs?: number; pollMs?: number } = {}): Promise<boolean> {
   const el = (comp.textarea as HTMLElement) || comp.editable;
-  if (el) {
-    try {
-      const evOpts: any = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
-      el.dispatchEvent(new KeyboardEvent('keydown', evOpts));
-      el.dispatchEvent(new KeyboardEvent('keypress', evOpts));
-      el.dispatchEvent(new KeyboardEvent('keyup', evOpts));
-      return true;
-    } catch {}
+  if (!el) return false;
+  try { el.focus(); } catch {}
+  const before = readComposerText(comp);
+  // simulate Enter key
+  try {
+    const ev: any = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
+    el.dispatchEvent(new KeyboardEvent('keydown', ev));
+    el.dispatchEvent(new KeyboardEvent('keypress', ev));
+    el.dispatchEvent(new KeyboardEvent('keyup', ev));
+  } catch {}
+
+  const timeoutMs = Math.max(300, opts.timeoutMs ?? 2000);
+  const pollMs = Math.max(50, opts.pollMs ?? 120);
+  const start = Date.now();
+  // Success criteria: input becomes empty (cleared by the app after sending)
+  while (Date.now() - start < timeoutMs) {
+    await sleep(pollMs);
+    const cur = readComposerText(comp);
+    if (cur.length === 0) return true;
   }
-  // fallback: clicking send button
-  if (comp.sendBtn) {
-    try { (comp.sendBtn as HTMLElement).click(); return true; } catch {}
-  }
-  return false;
+  // if still has content after timeout, treat as failed
+  const after = readComposerText(comp);
+  return after.length === 0 && before.length > 0;
 }
 
 async function attachImage(comp: ComposerElements, file: File): Promise<boolean> {
@@ -471,4 +575,67 @@ function extractLastJsonFromDoubao(): string | null {
     if (text) return text;
   }
   return null;
+}
+
+// ========= Uploads detection (composer attachments) =========
+
+function listAttachmentElements(scope: HTMLElement): HTMLElement[] {
+  // Look inside likely composer root and adjacent wrappers where thumbnails render
+  const roots: HTMLElement[] = [scope];
+  const nearby = (scope.closest('div[class*="bottom-wrapper-"]') || scope.closest('div[class*="right-area-"]') || scope.closest('div[class*="editor-container-"]')) as HTMLElement | null;
+  if (nearby && nearby !== scope) roots.push(nearby);
+  const set = new Set<HTMLElement>();
+  for (const r of roots) {
+    const items = Array.from(r.querySelectorAll<HTMLElement>('[data-testid="mdbox_image"], [data-testid="image"], .image-container-opAMeK, .image-wrapper-cymXaa'));
+    for (const el of items) if (isElementVisible(el)) set.add(el);
+  }
+  if (set.size === 0) {
+    // Fallback: global scan filtered by proximity to composer
+    const all = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="mdbox_image"], [data-testid="image"], .image-container-opAMeK, .image-wrapper-cymXaa'));
+    const br = scope.getBoundingClientRect();
+    for (const el of all) {
+      const er = el.getBoundingClientRect();
+      if (er.top > br.top - 300 && er.top < br.bottom + 1000) set.add(el);
+    }
+  }
+  return Array.from(set.values());
+}
+
+function countAttachments(comp: ComposerElements): number {
+  return listAttachmentElements(comp.container).length;
+}
+
+function isAttachmentUploading(el: HTMLElement): boolean {
+  // progress overlay
+  const container = el.closest('[class*="image-container-"], .image-container-opAMeK, .container-CVpVcp') as HTMLElement | null;
+  const scope = (container || el);
+  const overlay = scope.querySelector('[class*="loading-overlay"], .semi-progress-circle') as HTMLElement | null;
+  if (overlay && isElementVisible(overlay)) return true;
+  const progress = overlay?.getAttribute('aria-valuenow');
+  if (progress && Number(progress) < 100) return true;
+  // consider image loaded when natural size is available, ignore CSS width/height 0
+  const img = (scope.querySelector('img.image-Lgfrf0') || scope.querySelector('[data-testid="mdbox_image"] img') || scope.querySelector('img[imagex-type]') || scope.querySelector('img')) as HTMLImageElement | null;
+  if (img && img.naturalWidth > 0 && img.naturalHeight > 0) return false;
+  // If no explicit progress and we cannot read natural sizes, assume not uploading to avoid stalling forever
+  return false;
+}
+
+function isBreakButtonVisible(scope: HTMLElement): boolean {
+  const el = (scope.querySelector('[data-testid="chat_input_local_break_button"]') || document.querySelector('[data-testid="chat_input_local_break_button"]')) as HTMLElement | null;
+  if (!el) return false;
+  return isElementVisible(el);
+}
+
+async function waitUploadsDone(comp: ComposerElements, timeoutMs = 25000): Promise<boolean> {
+  const start = Date.now();
+  // if no attachments, treat as ready
+  if (countAttachments(comp) === 0 && !isBreakButtonVisible(comp.container)) return true;
+  while (Date.now() - start < timeoutMs) {
+    const items = listAttachmentElements(comp.container);
+    logger.info('Waiting uploads, found attachments:', items.length);
+    const uploading = isBreakButtonVisible(comp.container) || items.some((el) => isAttachmentUploading(el));
+    if (!uploading) return true;
+    await sleep(300);
+  }
+  return false;
 }

@@ -6,6 +6,8 @@
 */
 
 type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
+type ToastType = 'info' | 'success' | 'warn' | 'error';
+export interface ToastOptions { type?: ToastType; duration?: number }
 
 const LEVEL_ORDER: Record<LogLevel, number> = {
   silent: 0,
@@ -18,6 +20,12 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 
 const STORAGE_KEY = 'CJ_AI_LOG_LEVEL';
 const BRAND = 'CJ-AI';
+
+// Optional UI toast presenter, injected by app (e.g., ActionPanel)
+let gToastPresenter: ((message: string, opts?: ToastOptions) => void) | null = null;
+export function setToastPresenter(presenter: ((message: string, opts?: ToastOptions) => void) | null) {
+  gToastPresenter = presenter;
+}
 
 // Visual identity for our logs
 const brandStyle = [
@@ -112,6 +120,9 @@ export interface CJLogger {
   trace: (...args: unknown[]) => void;
   success: (...args: unknown[]) => void;
 
+  // ui toast (if presenter provided)
+  toast: (message: string, opts?: ToastOptions) => void;
+
   // utilities
   group: (title?: string) => void;
   groupCollapsed: (title?: string) => void;
@@ -169,6 +180,11 @@ function createLogger(scope?: string): CJLogger {
     debug: logAt('debug', 'debug'),
     trace: logAt('trace', 'trace'),
     success: logAt('info', 'success'),
+
+    toast: (message: string, opts?: ToastOptions) => {
+      if (!gToastPresenter) return; // no UI available
+      try { gToastPresenter(message, opts); } catch {}
+    },
 
     group: (title?: string) => {
       if (!shouldLog(currentLevel, 'info')) return;

@@ -14,6 +14,8 @@ export interface ActionPanelAction {
   hotkey?: string;
   kind?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
+  // Trigger type: default click; when set to 'dblclick', user must double-click to invoke
+  trigger?: 'click' | 'dblclick';
   onClick: (panel: ActionPanel) => void | Promise<void>;
 }
 
@@ -91,6 +93,7 @@ export class ActionPanel {
   private dragging = false; private dragOffset = { x: 0, y: 0 };
   private resizing = false; private resizeStart = { w: 0, h: 0, x: 0, y: 0 };
   private panes: Map<string, HTMLElement> = new Map();
+  private toastHost!: HTMLElement;
 
   constructor(options: ActionPanelOptions = {}) {
     const o = { ...DEFAULTS, ...options } as Required<ActionPanelOptions>;
@@ -141,11 +144,15 @@ export class ActionPanel {
     const resize = document.createElement('div');
     resize.className = 'cjai-resize';
 
-    root.append(header, body, resize);
+    // toast host overlay
+    const toastHost = document.createElement('div');
+    toastHost.className = 'cjai-toast-host';
+
+    root.append(header, body, resize, toastHost);
 
     this.root = root; this.header = header; this.titleEl = titleEl;
     this.tabsBar = tabs; this.contentWrap = content;
-    this.contentEl = contentArea; this.actionsEl = actions; this.resizeHandle = resize;
+    this.contentEl = contentArea; this.actionsEl = actions; this.resizeHandle = resize; this.toastHost = toastHost;
 
     // initialize tabs with default 'controls'
     this.addTab({ id: 'controls', label: 'Controls', content: controlsPane, select: true });
@@ -307,7 +314,8 @@ export class ActionPanel {
       const chip = document.createElement('span'); chip.className = 'cjai-chip'; chip.textContent = action.hotkey; btn.appendChild(chip);
     }
     btn.disabled = !!action.disabled;
-    btn.addEventListener('click', () => action.onClick(this));
+    const trigger = action.trigger === 'dblclick' ? 'dblclick' : 'click';
+    btn.addEventListener(trigger, () => action.onClick(this));
     btn.dataset.actionId = action.id;
     this.actionsEl.appendChild(btn);
   }
@@ -389,6 +397,26 @@ export class ActionPanel {
       if (it.tooltip) { k.title = it.tooltip; v.title = it.tooltip; }
       row.append(k, v); this.contentEl.appendChild(row);
     }
+  }
+
+  // Lightweight toast within panel
+  toast(message: string, opts?: { type?: 'info' | 'success' | 'warn' | 'error'; duration?: number }) {
+    const type = opts?.type || 'info';
+    const duration = Math.max(1500, opts?.duration ?? 3500);
+    const el = document.createElement('div');
+    el.className = `cjai-toast cjai-toast--${type}`;
+    el.textContent = message;
+    this.toastHost.appendChild(el);
+    // animate in
+    requestAnimationFrame(() => { el.setAttribute('data-show', 'true'); });
+    // auto hide
+    const hide = () => {
+      el.setAttribute('data-show', 'false');
+      setTimeout(() => { el.remove(); }, 220);
+    };
+    const timer = setTimeout(hide, duration);
+    // allow manual dismiss on click
+    el.addEventListener('click', () => { clearTimeout(timer); hide(); });
   }
 }
 

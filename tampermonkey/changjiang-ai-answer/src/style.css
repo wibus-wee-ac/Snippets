@@ -352,3 +352,42 @@
 .cjai-panel--collapsed .cjai-panel__title {
   font-size: 12px;
 }
+
+/* Toasts inside panel */
+.cjai-toast-host {
+  position: absolute;
+  left: 50%;
+  bottom: 52px; /* above actions bar */
+  transform: translateX(-50%);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 50;
+}
+
+.cjai-toast {
+  pointer-events: auto;
+  background: var(--cjai-bg-muted);
+  color: var(--cjai-ink);
+  border: 1px solid var(--cjai-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: var(--cjai-shadow);
+  max-width: 420px;
+  backdrop-filter: saturate(180%) blur(10px);
+  opacity: 0;
+  transform: translateY(6px) scale(.98);
+  transition: all .2s ease;
+  font-weight: 500;
+}
+
+.cjai-toast[data-show="true"] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.cjai-toast--success { border-color: rgba(16, 185, 129, .4); }
+.cjai-toast--warn { border-color: rgba(245, 158, 11, .4); }
+.cjai-toast--error { border-color: rgba(239, 68, 68, .45); }
